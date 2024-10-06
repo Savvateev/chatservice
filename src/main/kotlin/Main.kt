@@ -5,118 +5,128 @@ import java.util.Date
 
 class ChatNotFoundException(message: String) : RuntimeException(message)
 
-data class Message (
-    val messageId : Int,
+data class Message(
+    val messageId: Int,
     // id сообщения
-    var chatId : Int?,
-    // id чата
-    val ownerId : Int,
-    val text : String,
+    val ownerId: Int,
+    val text: String,
     var date : Date? = Date(),
     var time : LocalTime? = LocalTime.now(),
-    var isRead : Boolean = false,
+    var isRead: Boolean = false,
 )
 
+data class Chat(val messages: MutableList<Message> = mutableListOf())
+
 object ChatService {
-    var id : Int = 0
-    var chats = mutableMapOf<Int, Message>()
+    private var chatId: Int = 0
+    private var chats = mutableMapOf<Int, Chat>()
 
     fun clear() {
         chats.clear()
+        chatId = 0
     }
 
-    fun createChat(message: Message)  {
-        val tmp = message
-        tmp.setDataTime(tmp)
-        chats.put(id, tmp)
-        id += 1
+    fun createChat(message: Message): Int {
+        val chat = Chat()
+        chat.messages.add(message)
+        chats[chatId] = chat
+        chatId += 1
+        return chatId - 1
     }
 
     fun deleteChat(chatId: Int) {
-        val tmp = (chats.filterValues { it.chatId != chatId })
-        if (tmp.size == chats.size) throw ChatNotFoundException("Ошибка удаления чата, задан неверный Id чата")
-        chats.clear()
-        chats.putAll(tmp)
+        if (!chats.containsKey(chatId)) throw ChatNotFoundException("Ошибка удаления чата, задан неверный Id чата")
+        else chats.remove(chatId)
     }
 
-    fun getChatList(ownerId: Int) : MutableMap<Int, Message> {
-        // одбираем по владельцу
-        val tmp = chats.filterValues { it.ownerId == ownerId }
-        if (tmp.isEmpty()) throw ChatNotFoundException("Задан неверный Id чата при попытке создать список чатов")
-        // записываем только с уникальными chatId
-        var tmp1 = mutableMapOf<Int, Message>()
-        tmp1.put(0, tmp.getValue(0))
-        var currentChatId = tmp.getValue(0).chatId
-        for ((key, value) in tmp) if (currentChatId !== tmp.getValue(key).chatId) {
-            currentChatId = tmp.getValue(key).chatId
-            tmp1.put(id, tmp.getValue(key))
-            id++
-        }
-        return tmp1
+    fun getChatList(ownerId: Int) = chats.filterValues { it.messages.any { it.ownerId == ownerId } }
+
+    fun getUnreadChatsCount(ownerId: Int) =
+        chats.values.count { chat -> chat.messages.any { !it.isRead && it.ownerId == ownerId } }
+
+    fun getMessageList(chatId: Int, count: Int): List<Message> {
+        val chat = chats[chatId] ?: throw ChatNotFoundException("неверный ownerId")
+        return chat.messages.takeLast(count).onEach { it.isRead = true }
     }
 
-    //fun getUnreadChatsCount(ownerId: Int) : Int {
-    //    val tmp = chats.filterValues { !it.isRead && it.ownerId == ownerId }
-    //    return tmp.size
-    // }
-
-    fun getUnreadChatsCount(ownerId: Int) = chats.values.count {!it.isRead && it.ownerId == ownerId}
-
-    fun getMessageList(ownerId: Int, count : Int) : List<Message> {
-        val tmp = chats.filterValues { it.ownerId == ownerId }
-        if (tmp.isEmpty()) throw ChatNotFoundException("Задан неверный Id чата при попытке получения списка сообщений")
-        return chats.values.take(count).onEach { it.isRead = true }
-    }
-
-    fun addMessage(message: Message) {
-        if (chats.filterValues { it.chatId == message.chatId }.isEmpty()) {
-            throw ChatNotFoundException("Невозможно добавить сообщение, задан неверный Id чата")
-        }
+    fun addMessage(chatId: Int, message: Message) {
+        if (!chats.containsKey(chatId)) createChat(message)
         else {
-            val tmp = message
-            tmp.setDataTime(tmp)
-            chats.put(id, tmp)
-            id += 1
+            val chat = chats[chatId]
+            if (chat != null) {
+                chat.messages += message
+                chats[chatId] = chat
+            }
         }
     }
 
     fun updateMessage(message: Message) {
-        if (chats.filterValues { it.chatId == message.chatId }.isEmpty()) {
-            throw ChatNotFoundException("Невозможно редактировать сообщение, задан неверный Id чата")
-        }
-        else {
-            val tmp = message
-            tmp.setDataTime(tmp)
-            chats.put(id, tmp)
-            id += 1
-        }
-    }
-
-    fun deleteMessage(messageId : Int) {
-        val tmp = (chats.filterValues { it.messageId != messageId })
-        if (tmp.size == chats.size) throw ChatNotFoundException("Ошибка удаления сообщения, задан неверный Id чата")
-        chats.clear()
-        chats.putAll(tmp)
-    }
-
-    fun getLastMessages(chatId : Int) : String {
-        if (chats.filterValues { it.chatId == chatId }.isEmpty()) {
-            return "Невозможно получить последние сообщения, задан неверный Id чата"
-        }
-        else {
-            val tmp = chats.filterValues { it.chatId == chatId }
-            return tmp.firstNotNullOf {  }.toString()
+        chats.forEach { entry ->
+            if (entry.value.messages.any() { it.messageId == message.messageId }) {
+                val chat = chats[entry.key]
+                if (chat != null) {
+                    chat.messages.forEach { entry1 ->
+                        if (entry1.messageId == message.messageId) {
+                            chat.messages[entry1.messageId] = message
+                        }
+                    }
+                    chats[chatId] = chat
+                }
+            } else throw ChatNotFoundException("невозможно сохранить сообщение неверный messageId")
         }
     }
 
-    // установка даты и времени сообщения Extention function
-    fun Message.setDataTime(message: Message) {
-        message.date = Date()
-        message.time = LocalTime.now()
+    fun deleteMessage(messageId: Int) {
+        var flag = false
+        chats.forEach { entry ->
+            entry.value.messages.forEach { ms ->
+                if (ms.messageId == messageId) {
+                    val chat = chats.get(entry.key)!!
+                    chat.messages.removeAt(ms.messageId)
+                    chats.replace(entry.key, chat)
+                    flag = true
+                }
+            }
+        }
+        if (!flag) throw ChatNotFoundException("Ошибка удаления сообщения, задан неверный Id чата")
     }
 
+    fun getLastMessages() = chats.values.map { it.messages.lastOrNull()?.text ?: "нет сообщений" }
+
+    fun printChats() {
+        chats.forEach { entry -> println("$entry.value ") }
+    }
 }
 
 fun main() {
-
+    val ms1 = Message(0, 10, "First Message")
+    val ms2 = Message(1, 10, "Second Message")
+    val ms3 = Message(2, 4, "Hi")
+    val ms4 = Message(3, 10, "Hello !")
+    val ms5 = Message(4, 4, "How are you ?")
+    val ms6 = Message(5, 4, "How do you do ?")
+    val ms7 = Message(6, 3, "What about learning ?")
+    val ms8 = Message(7, 3, "is bad")
+    val ms9 = Message(8, 2, "Olga at home ?")
+    val ms10 = Message(9, 2, "She is gone")
+    val ms11 = Message(9, 2, "Yes")
+    var chatId = ChatService.createChat(ms1)
+    ChatService.addMessage(chatId, ms2)
+    ChatService.addMessage(chatId, ms4)
+    chatId = ChatService.createChat(ms3)
+    ChatService.addMessage(chatId, ms5)
+    ChatService.addMessage(chatId, ms6)
+    chatId = ChatService.createChat(ms7)
+    ChatService.addMessage(chatId, ms8)
+    chatId = ChatService.createChat(ms9)
+    ChatService.addMessage(chatId, ms10)
+    // println(ChatService.getChatList(3))
+    // ChatService.deleteChat(0)
+    // println(ChatService.getUnreadChatsCount(10))
+    // println(ChatService.getMessageList(0, 3))
+    // ChatService.printChats()
+    ChatService.deleteMessage(1)
+    // ChatService.printChats()
+    println()
+    println(ChatService.getLastMessages())
 }
