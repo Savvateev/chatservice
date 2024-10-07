@@ -30,6 +30,7 @@ class ChatServiceTest {
         val ms1 = Message(0, 10, "First Message")
         val chatId = ChatService.createChat(ms1)
         ChatService.getMessageList(100, 2)
+        //
     }
 
     @Test
