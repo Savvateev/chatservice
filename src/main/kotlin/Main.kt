@@ -10,8 +10,8 @@ data class Message(
     // id сообщения
     val ownerId: Int,
     val text: String,
-    var date : Date? = Date(),
-    var time : LocalTime? = LocalTime.now(),
+    var date : Date = Date(),
+    var time : LocalTime = LocalTime.now(),
     var isRead: Boolean = false,
 )
 
@@ -39,14 +39,20 @@ object ChatService {
         else chats.remove(chatId)
     }
 
-    fun getChatList(ownerId: Int) = chats.filterValues { it.messages.any { it.ownerId == ownerId } }
+    fun getChatList(ownerId: Int) = chats
+        .filterValues { it.messages.any { it.ownerId == ownerId } }
 
     fun getUnreadChatsCount(ownerId: Int) =
-        chats.values.count { chat -> chat.messages.any { !it.isRead && it.ownerId == ownerId } }
+        chats.values
+            .count { chat -> chat.messages.any { !it.isRead && it.ownerId == ownerId } }
 
     fun getMessageList(chatId: Int, count: Int): List<Message> {
         val chat = chats[chatId] ?: throw ChatNotFoundException("неверный ownerId")
-        return chat.messages.takeLast(count).onEach { it.isRead = true }
+        return chat.messages.asSequence()
+            .take(count)
+            .onEach { it.isRead = true }
+            .toList()
+            .asReversed()
     }
 
     fun addMessage(chatId: Int, message: Message) {
@@ -123,10 +129,10 @@ fun main() {
     // println(ChatService.getChatList(3))
     // ChatService.deleteChat(0)
     // println(ChatService.getUnreadChatsCount(10))
-    // println(ChatService.getMessageList(0, 3))
+    println(ChatService.getMessageList(0, 1))
     // ChatService.printChats()
     ChatService.deleteMessage(1)
     // ChatService.printChats()
     println()
-    println(ChatService.getLastMessages())
+    //println(ChatService.getLastMessages())
 }
