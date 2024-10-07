@@ -48,9 +48,11 @@ object ChatService {
 
     fun getMessageList(chatId: Int, count: Int): List<Message> {
         val chat = chats[chatId] ?: throw ChatNotFoundException("неверный ownerId")
-        return chat.messages
-            .takeLast(count)
+        return chat.messages.asSequence()
+            .take(count)
             .onEach { it.isRead = true }
+            .toList()
+            .asReversed()
     }
 
     fun addMessage(chatId: Int, message: Message) {
@@ -127,10 +129,10 @@ fun main() {
     // println(ChatService.getChatList(3))
     // ChatService.deleteChat(0)
     // println(ChatService.getUnreadChatsCount(10))
-    // println(ChatService.getMessageList(0, 3))
+    println(ChatService.getMessageList(0, 1))
     // ChatService.printChats()
     ChatService.deleteMessage(1)
     // ChatService.printChats()
     println()
-    println(ChatService.getLastMessages())
+    //println(ChatService.getLastMessages())
 }
